@@ -125,7 +125,12 @@ public class CliDriver {
       return;
     }
 
-    boolean psManaged = (Boolean)conf.getChangedProperties().get("PSManaged");
+
+    String val = (String)conf.getChangedProperties().get("PSManaged");
+    boolean psManaged = false;
+    if(val!=null && val.equalsIgnoreCase("true"))
+      psManaged = true;
+
     console.printInfo("PSManaged=" + psManaged);
 
     //loads Sherpa's Parameters
