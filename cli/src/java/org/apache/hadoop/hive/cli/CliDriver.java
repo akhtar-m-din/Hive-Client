@@ -20,21 +20,9 @@ package org.apache.hadoop.hive.cli;
 
 import static org.apache.hadoop.util.StringUtils.stringifyException;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 import com.google.common.base.Splitter;
 import com.sherpa.core.utils.ConfigurationLoader;
@@ -98,6 +86,8 @@ public class CliDriver {
 
   private final LogHelper console;
   private Configuration conf;
+  private HiveConf oldConf;
+  private boolean usingSherpaProperties=false;
 
   public CliDriver() {
     SessionState ss = SessionState.get();
@@ -128,18 +118,72 @@ public class CliDriver {
   }
 
 
-  public void printConf(HiveConf conf){
-    //conf = defineHiveConf(conf);
-    console.printInfo("\n ***** Printing Hive Conf");
-    for(Map.Entry<Object, Object> c: conf.getChangedProperties().entrySet()){
-      String key = (String)c.getKey();
-      if(key.equalsIgnoreCase("hive.exec.reducers.max"))
-        console.printInfo("Key: " + c.getKey() + " \t Value: " + c.getValue());
+  public void loadParameters(HiveConf conf){
 
-      if(key.equalsIgnoreCase("PSManaged"))
-        console.printInfo("Key: " + c.getKey() + " \t Value: " + c.getValue());
+    if(!conf.getChangedProperties().containsKey("PSManaged")) {
+      console.printInfo("\n ****** Using Default Parameters");
+      return;
+    }
+
+    boolean psManaged = (Boolean)conf.getChangedProperties().get("PSManaged");
+    console.printInfo("PSManaged=" + psManaged);
+
+    //loads Sherpa's Parameters
+    if(psManaged){
+
+      // Make sure, we dont load parameters for every command typed
+      // loads parameters only once at the start
+      if(!usingSherpaProperties){
+        console.printInfo("\n******* Loading Sherpa's Parameters");
+        oldConf = new HiveConf();
+        console.printInfo("Copying existing parameters ...");
+        copyConf(conf, oldConf);
+        Properties prop = loadProperties();
+        console.printInfo("Overriding parameters: " + prop);
+        Iterator<String> iterator = prop.stringPropertyNames().iterator();
+        while(iterator.hasNext()){
+            String pName = iterator.next();
+            conf.set(pName, prop.getProperty(pName));
+        }
+        console.printInfo("Done overriding parameters: ");
+        usingSherpaProperties = true;
+      }
 
     }
+    else{
+      if(usingSherpaProperties){
+        console.printInfo("\n******* Restoring original parameters");
+        copyConf(oldConf, conf);
+        console.printInfo("\n******* Restored original parameters");
+        usingSherpaProperties = false;
+      }
+      else
+        console.printInfo("\n **** Using Default Properties");
+
+    }
+
+
+  }
+
+
+  public void copyConf(HiveConf src, HiveConf dest){
+    for(Map.Entry<Object, Object> c: src.getChangedProperties().entrySet()){
+      dest.set((String)c.getKey(), (String)c.getValue() );
+    }
+  }
+
+
+  public Properties loadProperties(){
+    Properties properties = new Properties();
+    String filePath = "/root/sherpa.properties";
+    try{
+        properties.load(new FileInputStream(filePath));
+        console.printInfo("\n ***** Sherpa Properties Loaded: " + properties.toString() + " \n");
+    }catch (IOException e){
+      console.printInfo("\n\n Error: Properties file not found at " + filePath);
+    }
+
+    return properties;
   }
 
 
@@ -150,7 +194,7 @@ public class CliDriver {
     CliSessionState ss = (CliSessionState) SessionState.get();
     ss.setLastCommand(cmd);
 
-    printConf(ss.getConf());
+    loadParameters(ss.getConf());
 
     // Flush the print stream, so it doesn't include output from the last command
     ss.err.flush();
