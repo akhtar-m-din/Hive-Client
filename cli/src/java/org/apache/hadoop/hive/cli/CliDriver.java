@@ -455,6 +455,7 @@ public class CliDriver {
     //System.out.println("\n\n\n ***** ZooKeeper: " + zooKeeper);
 
     HiveCliJobExecutor jobExecutor = HiveCliFactory.getHiveCliJobExecutorInstance(qsb.toString(), appServer, jobHistoryServer, pollInterval);
+    jobExecutor.setName("HiveCliJobExecutor");
     jobExecutor.start();
 
     int ret = processLine(qsb.toString());
